@@ -1,0 +1,187 @@
+## Chapter 17 Structured Concurrency and ScopedValues
+
+#### **17.1 Introduction to Structured Concurrency**
+Structured Concurrency is a programming paradigm designed to simplify the management of concurrent tasks in multi-threaded applications. It organizes tasks hierarchically, ensuring:
+- **Parent-child relationships**: Subtasks are bound to their parent's lifecycle.  
+- **Deterministic cleanup**: All subtasks complete (or are canceled) before the parent task finishes.  
+- **Error propagation**: Failures in subtasks automatically propagate upward.  
+
+**Key Idea**:  
+Concurrent tasks form a **task tree**, mirroring the call stack of synchronous code but with parallel execution.  
+
+
+#### **17.2 Single-Threaded vs. Multi-Threaded Execution**
+| **Aspect**              | **Single-Threaded**                          | **Multi-Threaded (Traditional)**           | **Structured Concurrency**                |  
+|-------------------------|---------------------------------------------|--------------------------------------------|-------------------------------------------|  
+| **Task Order**          | Sequential (deterministic)                  | Unordered (non-deterministic)              | Hierarchical (parent-child dependencies) |  
+| **Error Handling**      | Simple (exceptions propagate up the stack)  | Complex (requires manual coordination)     | Automatic (like synchronous code)        |  
+| **Resource Cleanup**    | Automatic (scope-based)                     | Manual (risk of leaks)                     | Scope-bound (deterministic)              |  
+
+**Example: E-Commerce User Data Fetch**  
+```java
+// Traditional multi-threading: Risk of orphaned threads if fetchOrders() fails.
+ExecutorService executor = Executors.newCachedThreadPool();
+Future<UserBasicInfo> basicInfo = executor.submit(() -> fetchUserBasicInfo(userId));
+Future<List<Store>> stores = executor.submit(() -> fetchFavoriteStores(userId));
+// ... Manual error handling required.
+```
+
+#### **17.3 Java’s StructuredTaskScope**
+Introduced in Java 19 (JEP 428), `StructuredTaskScope` enforces structured concurrency by:  
+1. **Creating a task scope**:  
+   ```java
+   try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+       // Subtasks are automatically bound to this scope.
+   } // All subtasks complete/cancel when scope closes.
+   ```
+2. **Forking subtasks**:  
+   ```java
+   Future<UserBasicInfo> basicInfo = scope.fork(() -> fetchUserBasicInfo(userId));
+   Future<List<Store>> stores = scope.fork(() -> fetchFavoriteStores(userId));
+   ```
+3. **Handling results**:  
+   - **ShutdownOnFailure**: Cancels all subtasks if any fail (e.g., for aggregate operations).  
+   - **ShutdownOnSuccess**: Cancels remaining tasks after the first success (e.g., for redundancy).  
+
+**Example: Resilient User Data Fetch**  
+```java
+UserData getUser(String userId) throws Exception {
+    try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+        Future<UserBasicInfo> basicInfo = scope.fork(() -> fetchUserBasicInfo(userId));
+        Future<List<Store>> stores = scope.fork(() -> fetchFavoriteStores(userId));
+        
+        scope.join();          // Wait for all subtasks.
+        scope.throwIfFailed(); // Propagate failures.
+        
+        return assemble(basicInfo.resultNow(), stores.resultNow());
+    }
+}
+```
+
+**Key Benefits**:  
+- **Automatic cancellation**: Orphaned tasks are prevented.  
+- **Simplified error handling**: Exceptions propagate naturally.  
+- **Thread safety**: Tasks are confined to their scope.  
+
+### **Key Takeaways**
+1. **Structured Concurrency** brings synchronous code’s reliability to asynchronous workflows.  
+2. **`StructuredTaskScope`** eliminates common pitfalls (thread leaks, complex error handling).  
+3. **Use Cases**:  
+   - Microservice aggregation (e.g., fetching user data from multiple sources).  
+   - Parallel processing with cleanup guarantees (e.g., file uploads + metadata updates).  
+
+**Comparison with Alternatives**:  
+| Tool                     | Structured? | Automatic Cleanup | Error Propagation |  
+|--------------------------|-------------|--------------------|--------------------|  
+| `ExecutorService`         | No          | Manual             | Manual             |  
+| `CompletableFuture`       | Partial     | Manual             | Manual             |  
+| `StructuredTaskScope`     | Yes         | Yes                | Yes                |  
+
+Structured Concurrency is ideal for **scenarios requiring robust task hierarchies**, such as API aggregation or batch processing.
+### **17.4 Scoped Values: A Modern Alternative to ThreadLocals**
+
+#### **17.4.1 Problems with Traditional ThreadLocals**
+1. **Uncontrolled Mutability**  
+   - Any code with access can modify `ThreadLocal` values, making debugging difficult.  
+   - Similar to global variables, changes are hard to track.  
+
+2. **Unbounded Lifetimes**  
+   - Values persist until explicitly removed (`remove()`), often leading to memory leaks.  
+   - Virtual threads exacerbate this: short-lived threads multiply memory overhead.  
+
+3. **Inheritability Issues**  
+   - `InheritableThreadLocal` forces child threads to copy parent values, wasting memory.  
+
+#### **17.4.2 How ScopedValues Solve These Issues**
+| Problem                | `ThreadLocal`                 | `ScopedValue`                     |  
+|------------------------|-------------------------------|-----------------------------------|  
+| **Mutability**         | Mutable (`set()`)             | Immutable (bound once per scope)  |  
+| **Lifetime**           | Manual cleanup                | Automatically scoped              |  
+| **Inheritance**        | Copies to child threads       | Non-inheritable by default        |  
+
+**Key Innovations**:  
+- **Immutability**: Values cannot be modified after binding.  
+- **Scope-Bound**: Values exist only within a defined code block.  
+- **Structured Propagation**: Works seamlessly with `StructuredTaskScope`.  
+
+
+### **17.5 Using ScopedValues in Practice**
+
+#### **17.5.1 Basic Usage**
+1. **Declaration**:  
+   ```java
+   private static final ScopedValue<String> V1 = ScopedValue.newInstance();
+   ```
+
+2. **Binding and Execution**:  
+   ```java
+   ScopedValue.where(V1, "Hello")
+              .run(() -> System.out.println(V1.get() + " World"));  // "Hello World"
+   ```
+
+3. **Nested Scopes**:  
+   ```java
+   ScopedValue.runWhere(V1, "Outer", () -> {
+       System.out.println(V1.get());  // "Outer"
+       ScopedValue.runWhere(V1, "Inner", () -> {
+           System.out.println(V1.get());  // "Inner"
+       });
+       System.out.println(V1.get());  // "Outer" (original binding restored)
+   });
+   ```
+
+#### **17.5.2 Integration with StructuredTaskScope**
+```java
+void fetchData() {
+    ScopedValue.runWhere(V1, "AuthToken", () -> {
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+            Future<String> task1 = scope.fork(() -> V1.get().toUpperCase());  // "AUTHTOKEN"
+            Future<String> task2 = scope.fork(() -> {
+                try (var innerScope = new StructuredTaskScope<String>()) {
+                    Future<String> innerTask = innerScope.fork(() -> V1.get().toLowerCase());  // "authtoken"
+                    innerScope.join();
+                    return innerTask.resultNow();
+                }
+            });
+            scope.join();
+            System.out.println(task1.resultNow() + " " + task2.resultNow());  // "AUTHTOKEN authtoken"
+        }
+    });
+}
+```
+
+**Advantages**:  
+- **Thread-Safety**: Immutable values prevent race conditions.  
+- **Predictable Cleanup**: Values vanish when scope exits.  
+- **Structured Concurrency**: Parent-to-child value propagation without inheritance overhead.  
+
+#### **17.5.3 Error Handling**
+```java
+String result = ScopedValue.where(V2, "Input")
+                           .call(() -> V2.orElseThrow(() -> new IllegalArgumentException("Value required")));
+```
+
+**Methods**:  
+- `orElse(default)`: Fallback if unbound.  
+- `orElseThrow()`: Fail fast with exceptions.  
+
+
+### **Key Takeaways**
+1. **Use `ScopedValue` When**:  
+   - You need thread-local data with controlled lifetimes (e.g., request contexts).  
+   - Working with virtual threads to minimize memory leaks.  
+
+2. **Stick to `ThreadLocal` When**:  
+   - Migrating legacy code.  
+   - Libraries require mutable thread-local state.  
+
+3. **Combine with `StructuredTaskScope`** for robust parent-child task data flow.  
+
+**Example Workflow**:  
+```mermaid
+graph TD
+    A[Parent Task: Bind ScopedValue] --> B[Fork Child Tasks]
+    B --> C[Child Task: Read ScopedValue]
+    C --> D[Automatic Cleanup on Scope Exit]
+```
+{pagebreak}

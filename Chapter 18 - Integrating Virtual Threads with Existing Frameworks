@@ -1,0 +1,110 @@
+## Chapter 18 Integrating Virtual Threads with Existing Frameworks
+
+### **1.1 Integration Approaches**
+
+Virtual threads (Project Loom) enable lightweight concurrency in Java, but integrating them with existing frameworks requires careful consideration. Here are the key approaches:
+
+### **1. Using `ExecutorService` with Virtual Threads**
+Most frameworks use `ExecutorService` for task execution. Virtual threads can be enabled by replacing the existing executor with a virtual-thread-based one.
+
+#### **Standard vs. Virtual Thread Executors**
+| Executor Type | Creation Method | Best For |
+|--------------|----------------|----------|
+| **Platform Thread Pool** | `Executors.newFixedThreadPool(n)` | CPU-bound tasks |
+| **Virtual Thread Per Task** | `Executors.newVirtualThreadPerTaskExecutor()` | I/O-bound tasks |
+
+#### **Example: Updating an Executor in a Web Framework**
+```java
+// Before (Traditional Thread Pool)
+ExecutorService executor = Executors.newFixedThreadPool(200);
+
+// After (Virtual Threads)
+ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+```
+
+**Key Benefits**:
+- Scales to **millions** of tasks (unlike platform threads).
+- No need to tune thread pool size for I/O-bound workloads.
+
+
+### **2. Framework-Specific Integration**
+Many frameworks allow customizing the threading model. Below are common integration points:
+
+#### **Spring WebFlux / Servlet Containers**
+```java
+@Configuration
+public class VirtualThreadConfig {
+
+    @Bean
+    public TaskExecutor taskExecutor() {
+        return new TaskExecutorAdapter(Executors.newVirtualThreadPerTaskExecutor());
+    }
+}
+```
+**Effect**: All request processing shifts to virtual threads.
+
+#### **Database Connection Pools (HikariCP, etc.)**
+```java
+HikariConfig config = new HikariConfig();
+config.setThreadFactory(Thread.ofVirtual().factory());
+```
+**Why?**: Avoids tying up platform threads during I/O waits.
+
+
+### **3. Replacing `Thread` with `VirtualThread` Directly**
+For low-level integrations:
+```java
+Thread thread = Thread.startVirtualThread(() -> {
+    // Task logic here
+});
+```
+**Use Case**: When frameworks expose raw `Thread` creation.
+
+
+### **4. Handling Thread-Local Variables**
+Virtual threads support `ThreadLocal`, but consider:
+```java
+// Copy ThreadLocal values to virtual threads
+try (var scope = new StructuredTaskScope<String>()) {
+    scope.fork(() -> {
+        // Inherits ThreadLocal state
+        return processRequest();
+    });
+}
+```
+**Best Practice**: Prefer `ScopedValue` (Java 21+) for lighter-weight context propagation.
+
+
+### **Migration Checklist**
+1. **Identify Thread Pools**: Locate where the framework creates executors.
+2. **Replace with Virtual Threads**: Use `newVirtualThreadPerTaskExecutor()`.
+3. **Verify I/O Operations**: Ensure they’re non-blocking (NIO-based).
+4. **Test Under Load**: Virtual threads excel at high concurrency.
+
+
+### **Performance Considerations**
+| Metric | Virtual Threads | Platform Threads |
+|--------|----------------|------------------|
+| **Memory Usage** | Low (~1KB/thread) | High (~1MB/thread) |
+| **Context Switching** | Managed by JVM | OS-dependent |
+| **I/O-Bound Throughput** | Excellent | Limited by thread count |
+
+**Rule of Thumb**: Use virtual threads for I/O-bound tasks; keep platform threads for CPU-bound work.
+
+
+### **Example: Retrofit + Virtual Threads**
+```java
+Retrofit retrofit = new Retrofit.Builder()
+    .callbackExecutor(Executors.newVirtualThreadPerTaskExecutor())
+    .build();
+```
+**Result**: Async API calls use virtual threads instead of thread pools.
+
+
+### **Troubleshooting**
+- **Thread Pinning**: Avoid `synchronized` blocks (use `ReentrantLock`).
+- **Native Code**: Ensure JNI/native calls don’t block unnecessarily.
+- **Monitoring**: Use JFR to track virtual thread behavior.
+
+By following these patterns, existing frameworks can leverage virtual threads with minimal code changes while achieving **10-100x** higher concurrency in I/O-bound scenarios.
+{pagebreak}

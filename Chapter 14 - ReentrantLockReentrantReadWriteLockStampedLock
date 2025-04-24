@@ -1,0 +1,238 @@
+## Chapter 14 Advanced Locking Strategies: ReentrantLock, ReadWriteLock & StampedLock
+### **14.1 ReentrantLock and ReentrantReadWriteLock**
+
+#### **14.1.1 Introduction to ReentrantLock**  
+The **ReentrantLock** is a mutual exclusion lock that provides the same basic behavior as `synchronized` blocks but with extended capabilities:  
+- **Reentrancy**: A thread can acquire the same lock multiple times without deadlocking.  
+- **Fairness Policy**: Can be configured to enforce FIFO (First-In-First-Out) lock acquisition.  
+- **Interruptible Locking**: Supports `lockInterruptibly()`, allowing threads to respond to interruptions while waiting.  
+- **Condition Support**: Provides `Condition` objects for fine-grained thread signaling.  
+
+#### **Example: Basic ReentrantLock Usage**
+```java
+ReentrantLock lock = new ReentrantLock();
+lock.lock();
+try {
+    // Critical section
+} finally {
+    lock.unlock();
+}
+```
+
+#### **Comparison with `synchronized`**
+| Feature          | `synchronized` | `ReentrantLock` |
+|-----------------|---------------|----------------|
+| Reentrancy      | Yes           | Yes            |
+| Fairness        | No            | Configurable   |
+| Interruptible   | No            | Yes            |
+| Condition Support | No          | Yes            |
+
+#### **14.1.2 Introduction to ReentrantReadWriteLock**  
+The **ReentrantReadWriteLock** improves upon `ReentrantLock` by allowing:  
+- **Multiple concurrent readers** (shared read access).  
+- **Exclusive writer access** (only one thread can hold a write lock).  
+- **Lock downgrading** (a writer can convert to a reader safely).  
+
+#### **Key Characteristics**
+- **Read-Read**: Shared (non-blocking).  
+- **Read-Write**: Mutually exclusive.  
+- **Write-Write**: Mutually exclusive.  
+
+#### **Example: Basic Usage**
+```java
+ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+rwLock.readLock().lock();  // Shared read access
+try {
+    // Read operation
+} finally {
+    rwLock.readLock().unlock();
+}
+
+rwLock.writeLock().lock();  // Exclusive write access
+try {
+    // Write operation
+} finally {
+    rwLock.writeLock().unlock();
+}
+```
+
+### **14.2 Understanding ReentrantReadWriteLock**
+
+#### **14.2.1 Core Features**
+1. **Reentrancy**  
+   - The same thread can acquire read/write locks multiple times.  
+2. **Fairness Mode**  
+   - If configured (`new ReentrantReadWriteLock(true)`), threads acquire locks in FIFO order.  
+3. **Lock Downgrading**  
+   - A thread holding a write lock can acquire a read lock before releasing the write lock (ensuring data visibility).  
+
+#### **14.2.2 Performance Implications**
+- **Read-Heavy Workloads**: Highly efficient (multiple concurrent reads).  
+- **Write-Heavy Workloads**: May degrade performance due to write exclusivity.  
+
+#### **When to Use?**
+| Scenario | Recommended Lock |
+|----------|----------------|
+| High read, low write | `ReentrantReadWriteLock` |
+| High write, low read | `ReentrantLock` or `synchronized` |
+| Mixed workload | Evaluate contention levels |
+
+### **14.3 Lock Downgrading**
+
+#### **14.3.1 Concept**
+- **Lock Downgrading**: Converting a write lock to a read lock (without releasing in between).  
+- Ensures **data visibility** (the thread sees its own changes).  
+- Prevents other writers from modifying data while the thread is still reading.  
+
+#### **14.3.2 Why Downgrade?**
+- **Cache Consistency**: Ensures readers see the latest updates.  
+- **Avoid Stale Reads**: Prevents race conditions where a writer modifies data after a read begins.  
+
+#### **Example: Lock Downgrade**
+```java
+ReentrantReadWriteLock rwLock = new ReentrantReadWriteLock();
+rwLock.writeLock().lock();  // Acquire write lock
+try {
+    // Modify data
+    rwLock.readLock().lock();  // Downgrade to read lock
+} finally {
+    rwLock.writeLock().unlock();  // Release write lock, keep read lock
+}
+
+try {
+    // Read data safely
+} finally {
+    rwLock.readLock().unlock();
+}
+```
+
+#### **Constraints**
+- **No Lock Upgrading**: A read lock **cannot** be upgraded to a write lock (deadlock risk).  
+- **Write Lock Must Be Held**: Downgrading only works if the thread already holds the write lock.  
+
+### **14.4 Use Case Analysis**
+
+#### **14.4.1 Ideal Scenarios**
+1. **Caching Systems** (Read-heavy)  
+   - Example: A configuration store where reads far exceed writes.  
+2. **Database Connection Pools**  
+   - Multiple threads can check connections (read), but modifications (write) are exclusive.  
+3. **Financial Data Processing**  
+   - Batch updates (write) followed by analytical reads (read).  
+
+#### **14.4.2 Anti-Patterns (When Not to Use)**
+1. **Write-Intensive Workloads**  
+   - Excessive write contention makes `ReentrantLock` or `synchronized` more efficient.  
+2. **Short Critical Sections**  
+   - If operations are very fast, the overhead of `ReentrantReadWriteLock` may not justify its use.  
+
+#### **14.4.3 Alternatives**
+| Lock Type | Pros | Cons |
+|-----------|------|------|
+| `ReentrantLock` | Simple, low overhead | No read concurrency |
+| `ReentrantReadWriteLock` | Read scalability | Write contention |
+| `StampedLock` | Optimistic reads | Complex API |
+| `synchronized` | Simple | No fairness control |
+
+### **Summary**
+- **`ReentrantLock`**: Best for simple mutual exclusion.  
+- **`ReentrantReadWriteLock`**: Optimized for read-heavy workloads with lock downgrading.  
+- **Lock Downgrading**: Ensures visibility when transitioning from write to read.  
+- **Use Cases**: Caching, configuration stores, read-dominated systems.  
+
+**Final Recommendation**:  
+- Use `ReentrantReadWriteLock` when **reads vastly outnumber writes**.  
+- Prefer `ReentrantLock` or `synchronized` for **balanced or write-heavy workloads**.  
+- Consider `StampedLock` for advanced optimistic locking scenarios.
+
+### **14.5 StampedLock: The Optimistic Read-Write Lock**
+
+#### **14.5.1 Evolution of Locks**
+Locks have evolved to balance thread safety and performance:
+1. **No Lock → Mutex (synchronized/ReentrantLock)**  
+   - Basic mutual exclusion but no read concurrency.  
+2. **ReadWriteLock (ReentrantReadWriteLock)**  
+   - Allows multiple readers but can lead to **writer starvation**.  
+3. **StampedLock (JDK 8+)**  
+   - Introduces **optimistic reads** to mitigate starvation.  
+
+#### **14.5.2 What is StampedLock?**
+- A high-performance alternative to `ReentrantReadWriteLock`.  
+- Uses a **stamp** (long value) to track lock state:  
+  - **Zero stamp**: Lock acquisition failed.  
+  - **Non-zero stamp**: Must be used to release/convert the lock.  
+
+**Key Features**:  
+- **Optimistic reads**: Allow reads without blocking writes (with validation checks).  
+- **Non-reentrant**: Deadlocks if a thread reacquires the same lock.  
+- **Three Modes**:  
+  1. **Reading (Pessimistic)**: Similar to `ReentrantReadWriteLock`’s read lock.  
+  2. **Writing (Exclusive)**: Similar to `ReentrantReadWriteLock`’s write lock.  
+  3. **Optimistic Reading**: No lock acquired; checks for conflicts later.  
+
+
+### **14.6 Solving Lock Starvation with StampedLock**
+
+#### **14.6.1 The Lock Starvation Problem**
+- **Issue with `ReentrantReadWriteLock`**:  
+  - In read-heavy scenarios (e.g., 999 reads vs. 1 write), writers may starve.  
+  - Example:  
+    ```java
+    ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+    // 999 threads hold read locks → 1 writer blocked indefinitely.
+    ```
+
+- **Partial Solution**:  
+  - **Fair mode** (`new ReentrantReadWriteLock(true)`) reduces starvation but sacrifices throughput.  
+
+#### **14.6.2 How StampedLock Helps**
+1. **Optimistic Reads**:  
+   - Threads read **without blocking writers**.  
+   - Must validate the stamp after reading to check for conflicts.  
+   - If a write occurred, the read is retried with a pessimistic lock.  
+
+2. **Example: Optimistic Read**  
+   ```java
+   StampedLock stampedLock = new StampedLock();
+   long stamp = stampedLock.tryOptimisticRead();  // No lock acquired!
+   int value = sharedData;  // Read unprotected
+   if (!stampedLock.validate(stamp)) {  // Check if write occurred
+       stamp = stampedLock.readLock();  // Fallback to pessimistic read
+       try { value = sharedData; } 
+       finally { stampedLock.unlockRead(stamp); }
+   }
+   ```
+
+3. **Performance Benefit**:  
+   - Writers can proceed even during reads (unlike `ReentrantReadWriteLock`).  
+
+#### **14.6.3 Limitations of StampedLock**
+1. **No Reentrancy**:  
+   - A thread cannot reacquire the same lock (unlike `ReentrantReadWriteLock`).  
+   - Risk: Deadlocks if a thread tries to relock.  
+
+2. **No Condition Support**:  
+   - `Condition` is unavailable for `StampedLock`’s pessimistic modes.  
+
+3. **Interrupt Handling**:  
+   - Avoid `interrupt()` on threads holding stamps.  
+   - Use **interruptible variants** instead:  
+     - `readLockInterruptibly()`  
+     - `writeLockInterruptibly()`  
+
+
+### **Key Takeaways**
+| Feature                | `ReentrantReadWriteLock` | `StampedLock`              |  
+|------------------------|--------------------------|----------------------------|  
+| **Read Concurrency**   | Yes (pessimistic)        | Yes (optimistic + pessimistic) |  
+| **Write Starvation**   | Possible                 | Mitigated via optimistic reads |  
+| **Reentrancy**         | Yes                      | No                          |  
+| **Condition Support**  | Yes                      | No                          |  
+
+**When to Use?**  
+- **StampedLock**: High-read, low-write workloads where occasional write starvation is unacceptable.  
+- **ReentrantReadWriteLock**: Simpler scenarios needing reentrancy or `Condition` support.  
+
+**Final Note**:  
+StampedLock’s **optimistic reads** offer higher throughput but require careful validation to ensure data consistency.
+{pagebreak}

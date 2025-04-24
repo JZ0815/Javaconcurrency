@@ -1,0 +1,102 @@
+## **Preface**  
+
+### **The Concurrency Imperative**  
+In today's computing landscape, concurrency is no longer optional—it's essential. Modern applications demand responsiveness, scalability, and efficient resource utilization, all of which require mastery of concurrent programming. Yet concurrency remains one of Java's most challenging domains, where even experienced developers can stumble.  
+
+This book emerges from years of practical experience solving real-world concurrency problems. It's designed to take you from fundamental concepts to advanced techniques, equipping you with both the theoretical foundations and practical skills needed to build robust, high-performance concurrent applications in Java.
+
+### **Why This Book?**  
+*Java Concurrency in Practice: From Basics to Virtual Threads* stands apart because it:  
+
+1. **Bridges theory and practice**: Unlike academic texts that focus solely on concepts or cookbooks that just show recipes, we connect the "why" with the "how"  
+2. **Covers the complete spectrum**: From traditional thread management to cutting-edge virtual threads  
+3. **Focuses on real-world applicability**: Every concept is illustrated with practical examples you might encounter in production systems  
+4. **Provides depth without complexity**: We explain sophisticated topics in clear, approachable language  
+
+#### **What You'll Gain**  
+By reading this book, you'll develop:  
+- **A solid conceptual foundation** in Java's concurrency model  
+- **Practical skills** for writing thread-safe, performant code  
+- **Troubleshooting expertise** for debugging complex concurrency issues  
+- **Future-ready knowledge** of modern approaches like virtual threads  
+
+### Who Is This Book For?
+This book is written for:
+#### Java developers who want to write thread-safe, high-performance applications.
+#### Software engineers transitioning to concurrent programming.
+#### Tech leads and architects designing scalable systems.
+#### Computer science students learning multithreading concepts.
+While some familiarity with Java is assumed, no prior expertise in concurrency is required. We start with the basics and progressively explore advanced
+topics, ensuring a smooth learning curve. 
+
+### **What Will You Learn?**  
+Our comprehensive coverage includes:  
+
+#### **Core Foundations**  
+- The thread lifecycle and synchronization primitives  
+- Common pitfalls: race conditions, deadlocks, and starvation  
+- The Java Memory Model and happens-before relationships  
+
+#### **Concurrency Building Blocks**  
+- The java.util.concurrent framework in depth  
+- Choosing and using concurrent collections effectively  
+- Thread pools and executor services  
+
+#### **Advanced Techniques**  
+- Lock implementations and optimization strategies  
+- Non-blocking algorithms using CAS operations  
+- Memory layout considerations for performance  
+
+#### **Modern Concurrency**  
+- Virtual threads: concepts, benefits, and practical usage  
+- Structured concurrency patterns  
+- Migration strategies from traditional approaches  
+
+### **Why This Knowledge Matters Today**  
+The computing landscape has evolved dramatically:  
+
+1. **Hardware advancements** have made multicore processors ubiquitous  
+2. **Application demands** require handling thousands of concurrent operations 
+3. **Java's concurrency model** has matured significantly  
+
+This book prepares you for:  
+- Today's challenges in building responsive, scalable systems  
+- Tomorrow's opportunities with emerging concurrency paradigms  
+
+### **How This Book Is Organized**  
+We've structured the material to build your knowledge progressively:  
+
+1. **Foundational concepts** (Threads, synchronization, memory model)  
+2. **Practical tools** (Concurrent collections, executors)  
+3. **Advanced techniques** (Locks, atomics, performance optimization)  
+4. **Modern approaches** (Virtual threads, structured concurrency)  
+
+Each chapter includes:  
+✔ Clear explanations of concepts  
+✔ Annotated code examples  
+✔ Performance considerations  
+✔ Practical advice from production experience  
+
+### **Acknowledgments**  
+This book stands on the shoulders of the vibrant Java community. Special thanks to:  
+- The pioneers who developed Java's concurrency model  
+- The countless developers who shared their experiences  
+- The readers whose curiosity drives our field forward  
+
+### **Your Journey Begins Here**  
+Concurrency mastery will transform how you:  
+- Design systems  
+- Solve problems  
+- Write code  
+
+By the end of this book, you'll have:  
+- Confidence to tackle complex concurrency challenges  
+- Skills to write high-performance concurrent code  
+- Understanding to leverage both traditional and modern approaches  
+
+The path to becoming a concurrency expert starts now. Let's begin.  
+
+**Happy coding!**  
+— *Jie Zhu*  
+*August 2025*  
+{pagebreak}
